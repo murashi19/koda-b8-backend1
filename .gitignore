@@ -1,0 +1,6 @@
+.env
+.air
+build-errors.log
+main
+*.log
+tmp/
