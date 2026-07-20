@@ -1,47 +1,68 @@
 package repo
 
 import (
-	"time"
+	"context"
+	"errors"
+	"fmt"
 
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/murashi19/koda-b8-backend1/internal/models"
 )
 
 type UserRepo struct {
-	data *[]models.User
+	// data *[]models.User
+	db *pgxpool.Pool
 }
 
-func NewUserRepo(data *[]models.User) *UserRepo {
+func NewUserRepo(db *pgxpool.Pool) *UserRepo {
 	return &UserRepo{
-		data: data,
+		db: db,
 	}
 }
 
-func (r *UserRepo) Create(data *models.CreateUserRequest) *models.User {
-	id := int64(len(*r.data) + 1)
+func (r *UserRepo) Create(ctx context.Context, data *models.User) (*models.User, error) {
 
-	newUser := models.User{
-		ID:        id,
-		Email:     data.Email,
-		Password:  data.Password,
-		Username:  data.Username,
-		Phone:     data.Phone,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-	*r.data = append(*r.data, newUser)
-	return &newUser
-}
-
-func (r *UserRepo) FindByEmail(email string) *models.User {
-	for i := range *r.data {
-		if (*r.data)[i].Email == email {
-			return &(*r.data)[i]
+	sql := `
+		INSERT INTO users(email, password, username, phone) VALUES
+		($1, $2, $3, $4)
+		RETURNING id, email, password, username,phone,created_at,updated_at;
+	`
+	user, err := oneRow[models.User](ctx, r.db, sql, data.Email, data.Password, data.Username, data.Phone)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, fmt.Errorf("Email already registered")
 		}
+		return nil, err
 	}
-
-	return nil
+	return user, nil
 }
 
-func (r *UserRepo) GetAllUsers() []models.User {
-	return *r.data
+func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*models.User, error) {
+	query := `
+	SELECT
+		id,
+		email,
+		password,
+		username,
+		phone,
+		created_at,
+		updated_at
+	FROM users
+	WHERE email = $1
+	`
+
+	return oneRow[models.User](ctx, r.db, query, email)
+}
+
+func (r *UserRepo) GetAllUsers(ctx context.Context) ([]*models.User, error) {
+	sql := `SELECT
+			id,
+			email,
+			username,
+			phone
+			FROM users
+			ORDER BY id`
+	return rows[models.User](ctx, r.db, sql)
 }
