@@ -1,10 +1,12 @@
 package service
 
 import (
+	"context"
 	"errors"
 
 	"github.com/murashi19/koda-b8-backend1/internal/models"
 	"github.com/murashi19/koda-b8-backend1/internal/repo"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type UserService struct {
@@ -17,8 +19,9 @@ func NewUserService(repo *repo.UserRepo) *UserService {
 	}
 }
 
-func (s *UserService) Register(data *models.CreateUserRequest) (*models.User, error) {
+func (s *UserService) Register(ctx context.Context, data *models.CreateUserRequest) (*models.User, error) {
 
+	// Validasi input
 	if data.Email == "" ||
 		data.Password == "" ||
 		data.Username == "" ||
@@ -30,25 +33,51 @@ func (s *UserService) Register(data *models.CreateUserRequest) (*models.User, er
 		return nil, errors.New("password must be at least 6 characters")
 	}
 
-	if s.repo.FindByEmail(data.Email) != nil {
+	// Cek email sudah ada
+	if _, err := s.repo.FindByEmail(ctx, data.Email); err == nil {
 		return nil, errors.New("email already exists")
 	}
 
-	user := s.repo.Create(data)
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword(
+		[]byte(data.Password),
+		bcrypt.DefaultCost,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Buat entity User
+	user := &models.User{
+		Email:    data.Email,
+		Password: string(hashedPassword),
+		Username: data.Username,
+		Phone:    data.Phone,
+	}
+
+	// Simpan ke database
+	return s.repo.Create(ctx, user)
+}
+
+func (s *UserService) Login(ctx context.Context, data *models.LoginRequest) (*models.User, error) {
+
+	user, err := s.repo.FindByEmail(ctx, data.Email)
+	if err != nil {
+		return nil, errors.New("invalid email or password")
+	}
+
+	err = bcrypt.CompareHashAndPassword(
+		[]byte(user.Password),
+		[]byte(data.Password),
+	)
+
+	if err != nil {
+		return nil, errors.New("invalid email or password")
+	}
 
 	return user, nil
 }
 
-func (s *UserService) Login(users *models.LoginRequest) (*models.User, error) {
-	user := s.repo.FindByEmail(users.Email)
-
-	if user == nil {
-		return nil, errors.New("email not found")
-	}
-
-	if user.Password != users.Password {
-		return nil, errors.New("wrong password")
-	}
-
-	return user, nil
+func (s *UserService) GetAllUsers(ctx context.Context) ([]*models.User, error) {
+	return s.repo.GetAllUsers(ctx)
 }
