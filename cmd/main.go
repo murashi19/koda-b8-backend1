@@ -1,18 +1,26 @@
 package main
 
 import (
+	"log"
+
 	"github.com/gin-gonic/gin"
 	"github.com/murashi19/koda-b8-backend1/internal/di"
 )
 
 func main() {
-	r := gin.Default()
+	router := gin.Default()
 
-	c := di.NewContainer()
-	authHandler := c.AuthHandler()
+	container, err := di.NewContainer()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer container.Close()
 
-	r.POST("/register", authHandler.Register)
-	r.POST("/login", authHandler.Login)
+	auth := container.AuthHandler()
 
-	r.Run("0.0.0.0:8080")
+	router.POST("/register", auth.Register)
+	router.POST("/login", auth.Login)
+	router.GET("/users", auth.GetUsers)
+
+	log.Fatal(router.Run(":8080"))
 }
